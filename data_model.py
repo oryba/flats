@@ -6,15 +6,17 @@ from sqlalchemy import text
 from flatfy import conn
 
 
-def get_news():
+def get_discounts():
     query = f"""
         select distinct
             today.flat_id,
             s.title,
+            s.id as sid,
             yesterday.price as prev, today.price as now,
             today.price - yesterday.price as diff,
             round((1.0 * today.price / yesterday.price - 1) * 100) as diff_pct,
-            round(today.price / today.area) as sqm
+            round(today.price / today.area) as sqm,
+            today.renovation
         from offer today join offer yesterday on today.flat_id = yesterday.flat_id
             and today.scan_date >= date('now')
             and yesterday.scan_date >= date('now','-1 days')
@@ -24,6 +26,51 @@ def get_news():
     """
     data = conn.execute(text(query)).mappings().all()
     return data
+
+
+def get_daily_stats():
+    query = f"""
+        select date(o.scan_date) as dt, o.price,
+            case
+                when area < 45 then 'S'
+                when area >= 45 and area < 65 then 'M'
+                when area >= 65 and area < 85 then 'L'
+                else 'XL'
+                end as type,
+            price / area as m2_price
+        from offer o
+        where price > 12000 and price < 10000000
+    """
+    data = conn.execute(text(query)).mappings().all()
+    df = pd.DataFrame(data)
+    med = df.groupby('dt').agg(
+        q1=('price', lambda x: x.quantile(0.2)),
+        q2=('price', lambda x: x.quantile(0.5)),
+        q3=('price', lambda x: x.quantile(0.8))
+    )
+    return med
+
+
+def get_new_offers():
+    query = f"""
+        select
+            distinct
+            today.flat_id,
+            s.title,
+            s.id as sid,
+            round(today.price) as price,
+            round(today.price / today.area) as sqm,
+            today.scan_date,
+            today.insert_date,
+            today.renovation
+        from
+            offer today
+            left join selection s on s.id = today.selection_id
+            where today.insert_date is not null and today.insert_date >= date('now', '-1 days')
+        group by 
+            today.flat_id;
+    """
+    return conn.execute(text(query)).mappings().all()
 
 
 def get_recent_stats(rf=None, last_days=None):
@@ -45,6 +92,7 @@ def get_recent_stats(rf=None, last_days=None):
                         price / area as m2_price
                  from offer
                  where scan_date >= (select date(max(scan_date)) from offer)
+                     and price > 12000 and price < 10000000
                      {ren_filter}
                      {ld_filter}
              ) o left join selection s on o.selection_id = s.id

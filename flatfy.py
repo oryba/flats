@@ -46,7 +46,7 @@ class Offer(Base):
         return f"Offer(building={self.building_id})"
 
 
-engine = create_engine("sqlite:///flats.db", echo=True, future=True, connect_args={'check_same_thread': False})
+engine = create_engine("sqlite:///data/flats.db", echo=True, future=True, connect_args={'check_same_thread': False})
 conn = engine.connect()
 Base.metadata.create_all(engine)
 
@@ -65,7 +65,7 @@ def fetch_query(selection: Selection):
     page = 1
 
     while True:
-        url = f"https://flatfy.ua/api/realties?page={page}&currency=USD&{selection.query}&section_id=1&lang=uk"
+        url = f"https://flatfy.ua/api/realties?page={page}&currency=USD&{selection.query}&price_min=20000&section_id=1&lang=uk"
 
         len_before = len(data)
         response = requests.request("GET", url + "&with_renovation=yes")
